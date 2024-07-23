@@ -4,6 +4,8 @@ inputs:
   sizes:
     description: "Custom size configuration"
     required: false
+  token:
+    default: ${{ secrets.GITHUB_TOKEN }}
 runs:
   using: "node20"
   main: "dist/index.js"
