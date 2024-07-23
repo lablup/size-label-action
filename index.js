@@ -6,6 +6,7 @@ const process = require("process");
 const { Octokit } = require("@octokit/rest");
 const globrex = require("globrex");
 const Diff = require("diff");
+const core = require("@actions/core");
 
 const defaultSizes = {
   0: "XS",
@@ -22,7 +23,7 @@ const globrexOptions = { extended: true, globstar: true };
 async function main() {
   debug("Running size-label-action...");
 
-  const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  const GITHUB_TOKEN = core.getInput("token");
   if (!GITHUB_TOKEN) {
     throw new Error("Environment variable GITHUB_TOKEN not set!");
   }
@@ -71,7 +72,7 @@ async function main() {
   const changedLines = getChangedLines(isIgnored, pullRequestDiff.data);
   console.log("Changed lines:", changedLines);
 
-  const sizes = getSizesInput();
+  const sizes = getInputAsObject("sizes");
   const sizeLabel = getSizeLabel(changedLines, sizes);
   console.log("Matching label:", sizeLabel);
 
@@ -197,13 +198,9 @@ function getLabelChanges(newLabel, existingLabels) {
   return { add, remove };
 }
 
-function getSizesInput() {
-  let inputSizes = process.env.INPUT_SIZES;
-  if (inputSizes && inputSizes.length) {
-    return JSON.parse(inputSizes);
-  } else {
-    return undefined;
-  }
+function getInputAsObject(name, options) {
+  let input = core.getInput(name, options);
+  return input ? JSON.parse(input) : undefined;
 }
 
 if (require.main === module) {
