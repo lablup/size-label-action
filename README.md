@@ -16,9 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: size-label
-        uses: "pascalgn/size-label-action@v0.4.3"
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        uses: lablup/size-label-action@v0.4.3
 ```
 
 ## Create the needed labels
@@ -46,7 +44,6 @@ You can configure the environment variables in the workflow file like this:
 
 ```yaml
         env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           IGNORED: ".*\n!.gitignore\nyarn.lock\ngenerated/**"
 ```
 
@@ -75,9 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: size-label
-        uses: "pascalgn/size-label-action@v0.4.2"
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        uses: lablup/size-label-action@v0.4.2
         with:
           sizes: >
             {
