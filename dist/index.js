@@ -53,7 +53,7 @@ async function main() {
     return false;
   }
 
-  const isIgnored = parseIgnored(process.env.IGNORED);
+  const isIgnored = parseIgnored(core.getInput("ignored"));
 
   const pullRequestHome = {
     owner: eventData.pull_request.base.repo.owner.login,
