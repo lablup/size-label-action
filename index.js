@@ -5,8 +5,9 @@ const process = require("process");
 
 const { Octokit } = require("@octokit/rest");
 const globrex = require("globrex");
-const Diff = require("diff");
 const core = require("@actions/core");
+
+const HttpsProxyAgent = require("https-proxy-agent");
 
 const defaultSizes = {
   0: "XS",
@@ -56,25 +57,40 @@ async function main() {
 
   const pull_number = eventData.pull_request.number;
 
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+
   const octokit = new Octokit({
     auth: `token ${GITHUB_TOKEN}`,
-    userAgent: "pascalgn/size-label-action"
+    baseUrl: process.env.GITHUB_API_URL || "https://api.github.com",
+    userAgent: "pascalgn/size-label-action",
+    ...(proxyUrl && { request: { agent: new HttpsProxyAgent(proxyUrl) } })
   });
 
-  const pullRequestDiff = await octokit.pulls.get({
+  const pullRequestFiles = await octokit.pulls.listFiles({
     ...pullRequestHome,
     pull_number,
     headers: {
-      accept: "application/vnd.github.v3.diff"
+      accept: "application/vnd.github.raw+json"
     }
   });
 
-  const changedLines = getChangedLines(isIgnored, pullRequestDiff.data);
+  const changedLines = getChangedLines(isIgnored, pullRequestFiles.data);
   console.log("Changed lines:", changedLines);
+  if (isNaN(changedLines)) {
+    throw new Error(`could not get changed lines: '${changedLines}'`);
+  }
 
+  // const sizes = getSizesInput();  // upstream impl takes from env-var
+  // Lablup Patch: take the size config from the job input
   const sizes = getInputAsObject("sizes");
   const sizeLabel = getSizeLabel(changedLines, sizes);
   console.log("Matching label:", sizeLabel);
+
+  const githubOutput = process.env.GITHUB_OUTPUT;
+  if (githubOutput) {
+    fs.writeFileSync(githubOutput, `sizeLabel="${sizeLabel}"`);
+    debug(`Written label '${sizeLabel}' to ${githubOutput}`);
+  }
 
   const { add, remove } = getLabelChanges(
     sizeLabel,
@@ -120,27 +136,26 @@ function debug(...str) {
 }
 
 function parseIgnored(str = "") {
-  const ignored = str
+  const ignored = (str || "")
     .split(/\r|\n/)
     .map(s => s.trim())
     .filter(s => s.length > 0 && !s.startsWith("#"))
     .map(s =>
       s.length > 1 && s[0] === "!"
-        ? { not: globrex(s.substr(1), globrexOptions) }
+        ? { not: globrex(s.slice(1), globrexOptions) }
         : globrex(s, globrexOptions)
     );
   function isIgnored(path) {
     if (path == null || path === "/dev/null") {
       return true;
     }
-    const pathname = path.substr(2);
     let ignore = false;
     for (const entry of ignored) {
       if (entry.not) {
-        if (pathname.match(entry.not.regex)) {
+        if (path.match(entry.not.regex)) {
           return false;
         }
-      } else if (!ignore && pathname.match(entry.regex)) {
+      } else if (!ignore && path.match(entry.regex)) {
         ignore = true;
       }
     }
@@ -161,15 +176,10 @@ async function readFile(path) {
   });
 }
 
-function getChangedLines(isIgnored, diff) {
-  return Diff.parsePatch(diff)
-    .flatMap(file =>
-      isIgnored(file.oldFileName) && isIgnored(file.newFileName)
-        ? []
-        : file.hunks
-    )
-    .flatMap(hunk => hunk.lines)
-    .filter(line => line[0] === "+" || line[0] === "-").length;
+function getChangedLines(isIgnored, pullRequestFiles) {
+  return pullRequestFiles
+    .map(file => isIgnored(file.previous_filename) && isIgnored(file.filename) ? 0 : file.changes)
+    .reduce((total, current) => total + current, 0);
 }
 
 function getSizeLabel(changedLines, sizes = defaultSizes) {
@@ -198,6 +208,15 @@ function getLabelChanges(newLabel, existingLabels) {
   return { add, remove };
 }
 
+function getSizesInput() {
+  let inputSizes = process.env.INPUT_SIZES;
+  if (inputSizes && inputSizes.length) {
+    return JSON.parse(inputSizes);
+  } else {
+    return undefined;
+  }
+}
+
 function getInputAsObject(name, options) {
   let input = core.getInput(name, options);
   return input ? JSON.parse(input) : undefined;
@@ -213,4 +232,4 @@ if (require.main === module) {
   );
 }
 
-module.exports = { main };
+module.exports = { main, parseIgnored }; // parseIgnored exported for testing
